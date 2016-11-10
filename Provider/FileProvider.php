@@ -354,6 +354,8 @@ class FileProvider extends BaseProvider
                             ->end();
                         break;
                 }
+
+                return;
             }
         } elseif ($media->getBinaryContent() instanceof File) {
             $fileName = $media->getBinaryContent()->getFilename();
