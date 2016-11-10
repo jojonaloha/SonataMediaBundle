@@ -23,6 +23,7 @@ use Sonata\MediaBundle\Model\MediaInterface;
 use Sonata\MediaBundle\Thumbnail\ThumbnailInterface;
 use Symfony\Component\Form\FormBuilder;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\File\Exception\UploadException;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\MimeType\ExtensionGuesser;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -303,7 +304,57 @@ class FileProvider extends BaseProvider
         }
 
         if ($media->getBinaryContent() instanceof UploadedFile) {
-            $fileName = $media->getBinaryContent()->getClientOriginalName();
+            $uploadedFile = $media->getBinaryContent();
+            $fileName = $uploadedFile->getClientOriginalName();
+            // Handle file upload errors http://php.net/manual/en/features.file-upload.errors.php
+            if (!$uploadedFile->isValid()) {
+                switch ($uploadedFile->getError()) {
+                    case UPLOAD_ERR_INI_SIZE:
+                        $errorElement
+                            ->with('binaryContent')
+                            ->addViolation('The file "%name%" exceeds the maximum upload size %size%', array('%name%' => $fileName, '%size%' => $uploadedFile->getMaxFilesize()))
+                            ->end();
+                        break;
+
+                    case UPLOAD_ERR_FORM_SIZE:
+                        $errorElement
+                            ->with('binaryContent')
+                            ->addViolation('The file "%name%" exceeds the maximum upload size for the form.', array('%name%' => $fileName))
+                            ->end();
+                        break;
+
+                    case UPLOAD_ERR_PARTIAL:
+                        $errorElement
+                            ->with('binaryContent')
+                            ->addViolation('The file "%name%" was only partially uploaded.', array('%name%' => $fileName))
+                            ->end();
+                        break;
+
+                    case UPLOAD_ERR_NO_FILE:
+                        $errorElement
+                            ->with('binaryContent')
+                            ->addViolation('No file was uploaded.')
+                            ->end();
+                        break;
+
+                    case UPLOAD_ERR_NO_TMP_DIR:
+                        // This is likely a server configuration error
+                        throw new UploadException('The file could not be uploaded because the system temporary directory is missing.');
+                        break;
+
+                    case UPLOAD_ERR_CANT_WRITE:
+                        // This is likely a server configuration error
+                        throw new UploadException('The file could not be uploaded because the system was unable to write the file to disk.');
+                        break;
+
+                    case UPLOAD_ERR_EXTENSION:
+                        $errorElement
+                            ->with('binaryContent')
+                            ->addViolation('The file "%name%" could not be uploaded because it has a disallowed extension.', array('%name' => $fileName))
+                            ->end();
+                        break;
+                }
+            }
         } elseif ($media->getBinaryContent() instanceof File) {
             $fileName = $media->getBinaryContent()->getFilename();
         } else {
